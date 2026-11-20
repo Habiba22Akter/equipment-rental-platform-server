@@ -1,9 +1,8 @@
 import { app } from "./app.js";
-import { closeDatabase, connectToDatabase } from "./config/database.js";
+import { closeDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 
 async function startServer() {
-  await connectToDatabase();
   const server = app.listen(env.port, () => {
     console.log(`Server is running on port ${env.port}`);
   });
