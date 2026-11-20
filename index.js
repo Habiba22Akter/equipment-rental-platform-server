@@ -34,13 +34,13 @@ const db = connectedClient.db("equipment-rental-platform");
 
 
 const usersCollection = db.collection("user");
-const equipmentCollection = db.collection("equipment");
-const bookingsCollection = db.collection("bookings");
-const reviewsCollection = db.collection("reviews");
-const paymentsCollection = db.collection("payments");
-const messagesCollection = db.collection("messages");
-const notificationsCollection = db.collection("notifications");
-const categoriesCollection = db.collection("categories");
+// const equipmentCollection = db.collection("equipment");
+// const bookingsCollection = db.collection("bookings");
+// const reviewsCollection = db.collection("reviews");
+// const paymentsCollection = db.collection("payments");
+// const messagesCollection = db.collection("messages");
+// const notificationsCollection = db.collection("notifications");
+// const categoriesCollection = db.collection("categories");
 
 
 
@@ -64,16 +64,18 @@ app.get("/user", async (req, res) => {
 
 
 
-app.get("/equipment", async (req, res) => {
-  try {
-    const equipment = await equipmentCollection.find().toArray(); 
-    res.json(equipment);
-  } catch (error) {
-    console.error("Error fetching equipment:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+// app.get("/equipment", async (req, res) => {
+//   try {
+//     const equipment = await equipmentCollection.find().toArray(); 
+//     res.json(equipment);
+//   } catch (error) {
+//     console.error("Error fetching equipment:", error);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
+// });
 
-app.listen(process.env.PORT || 5001, () => {
+const port = process.env.PORT || 5001;
+
+app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
