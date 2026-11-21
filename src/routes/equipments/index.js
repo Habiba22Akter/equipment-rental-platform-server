@@ -6,6 +6,14 @@ export const equipmentsRouter = Router();
 
 const APPROVAL_STATUSES = ["pending", "approved", "rejected"];
 const RENTAL_TYPES = ["Daily", "Weekly", "Monthly"];
+const CATEGORY_DEFINITIONS = [
+  { label: "Construction Equipment", aliases: ["construction", "construction equipment"] },
+  { label: "Photography Equipment", aliases: ["photography", "photographic equipment", "photography equipment"] },
+  { label: "Vehicles & Transportation", aliases: ["vehicle", "vehicles", "transportation", "vehicles and transportation"] },
+  { label: "Agriculture Equipment", aliases: ["agriculture", "agricultural", "agriculture equipment"] },
+  { label: "Electronics", aliases: ["electronic", "electronics"] },
+  { label: "Event Equipment", aliases: ["event", "events", "event equipment"] },
+];
 
 function equipmentCollection() {
   return getDatabase().collection("equipment");
@@ -32,6 +40,76 @@ function canManage(req, equipment) {
   return Boolean(id) && equipment.ownerId === id;
 }
 
+function queryText(value) {
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0].trim();
+  return "";
+}
+
+function queryValues(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values.filter((item) => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+}
+
+function normalizeCategory(value) {
+  return value.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function categoryLabel(value) {
+  const normalized = normalizeCategory(value);
+  return CATEGORY_DEFINITIONS.find((definition) =>
+    definition.aliases.some((alias) => normalizeCategory(alias) === normalized),
+  )?.label ?? value;
+}
+
+function categoryAliases(value) {
+  const normalized = normalizeCategory(value);
+  const definition = CATEGORY_DEFINITIONS.find((definition) =>
+    normalizeCategory(definition.label) === normalized ||
+    definition.aliases.some((alias) => normalizeCategory(alias) === normalized),
+  );
+  return definition ? [definition.label, ...definition.aliases] : [value];
+}
+
+function rentalPriceExpression() {
+  const dailyRate = { $ifNull: ["$dailyRate", "$pricePerDay"] };
+  const weeklyRate = {
+    $cond: [
+      { $gt: [{ $ifNull: ["$weeklyRate", 0] }, 0] },
+      "$weeklyRate",
+      { $multiply: [dailyRate, 7] },
+    ],
+  };
+  const monthlyRate = {
+    $cond: [
+      { $gt: [{ $ifNull: ["$monthlyRate", 0] }, 0] },
+      "$monthlyRate",
+      { $multiply: [dailyRate, 30] },
+    ],
+  };
+
+  return {
+    $switch: {
+      branches: [
+        { case: { $eq: ["$rentalType", "Weekly"] }, then: weeklyRate },
+        { case: { $eq: ["$rentalType", "Monthly"] }, then: monthlyRate },
+      ],
+      default: dailyRate,
+    },
+  };
+}
+
+function optionalPrice(query, name) {
+  const raw = queryText(query[name]);
+  if (!raw) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : NaN;
+}
+
 function textField(body, field) {
   const value = body?.[field];
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -43,7 +121,7 @@ function numberField(body, field) {
   return Number.isFinite(value) ? value : null;
 }
 
-function equipmentFilter(query) {
+function equipmentFilter(query, priceBounds) {
   const conditions = [];
   const filter = {};
 
@@ -51,8 +129,15 @@ function equipmentFilter(query) {
     filter.ownerId = query.ownerId.trim();
   }
 
-  if (typeof query.category === "string" && query.category.trim()) {
-    filter.category = query.category.trim();
+  const categories = queryValues(query.category);
+  if (categories.length > 0) {
+    conditions.push({
+      $or: categories.map((category) => ({
+        category: {
+          $in: categoryAliases(category).map((value) => new RegExp(`^${escapeRegex(value)}$`, "i")),
+        },
+      })),
+    });
   }
 
   if (typeof query.status === "string" && query.status.trim()) {
@@ -62,10 +147,41 @@ function equipmentFilter(query) {
     conditions.push({ $or: [{ status: "approved" }, { approvalStatus: "approved" }] });
   }
 
-  if (typeof query.q === "string" && query.q.trim()) {
-    const pattern = new RegExp(query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  const search = queryText(query.q);
+  if (search) {
+    const pattern = new RegExp(escapeRegex(search), "i");
     conditions.push({
-      $or: [{ name: pattern }, { description: pattern }, { location: pattern }, { category: pattern }],
+      $or: [{ name: pattern }, { location: pattern }],
+    });
+  }
+
+  const rentalType = queryText(query.rentalType);
+  if (rentalType && rentalType !== "all") {
+    conditions.push({ rentalType: new RegExp(`^${escapeRegex(rentalType)}$`, "i") });
+  }
+
+  if (priceBounds.min !== undefined || priceBounds.max !== undefined) {
+    const priceConditions = [];
+    if (priceBounds.min !== undefined) priceConditions.push({ $gte: [rentalPriceExpression(), priceBounds.min] });
+    if (priceBounds.max !== undefined) priceConditions.push({ $lte: [rentalPriceExpression(), priceBounds.max] });
+    conditions.push({ $expr: { $and: priceConditions } });
+  }
+
+  const availability = queryText(query.availability);
+  if (availability === "available") {
+    conditions.push({
+      $or: [
+        { availableQuantity: { $gt: 0 } },
+        { availableQuantity: { $exists: false }, quantity: { $gt: 0 } },
+        { availableQuantity: { $exists: false }, quantity: { $exists: false } },
+      ],
+    });
+  } else if (availability === "unavailable") {
+    conditions.push({
+      $or: [
+        { availableQuantity: { $lte: 0 } },
+        { availableQuantity: { $exists: false }, quantity: { $lte: 0 } },
+      ],
     });
   }
 
@@ -76,14 +192,58 @@ function equipmentFilter(query) {
 
 equipmentsRouter.get("/", async (req, res, next) => {
   try {
-    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200);
+    const minPrice = optionalPrice(req.query, "minPrice");
+    const maxPrice = optionalPrice(req.query, "maxPrice");
+    if (Number.isNaN(minPrice) || Number.isNaN(maxPrice) || (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice)) {
+      return res.status(400).json({ success: false, error: { message: "Enter a valid minimum and maximum price range" } });
+    }
+
+    const requestedSort = queryText(req.query.sort);
+    const sort = ["price-asc", "price-desc"].includes(requestedSort) ? requestedSort : "newest";
+    const pipeline = [{ $match: equipmentFilter(req.query, { min: minPrice, max: maxPrice }) }];
+    if (sort === "price-asc" || sort === "price-desc") {
+      pipeline.push({ $addFields: { _rentalPriceForSort: rentalPriceExpression() } });
+    }
+    pipeline.push({
+      $sort: sort === "price-asc"
+        ? { _rentalPriceForSort: 1, createdAt: -1 }
+        : sort === "price-desc"
+          ? { _rentalPriceForSort: -1, createdAt: -1 }
+          : { createdAt: -1 },
+    });
+    if (sort === "price-asc" || sort === "price-desc") {
+      pipeline.push({ $project: { _rentalPriceForSort: 0 } });
+    }
+
+    const requestedLimit = queryText(req.query.limit);
+    if (requestedLimit) {
+      const parsedLimit = Number(requestedLimit);
+      if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({ success: false, error: { message: "limit must be a positive integer" } });
+      }
+      pipeline.push({ $limit: Math.min(parsedLimit, 500) });
+    }
     const equipments = await equipmentCollection()
-      .find(equipmentFilter(req.query))
-      .sort({ createdAt: -1 })
-      .limit(limit)
+      .aggregate(pipeline)
       .toArray();
 
     res.json({ success: true, data: equipments });
+  } catch (error) {
+    next(error);
+  }
+});
+
+equipmentsRouter.get("/categories", async (_req, res, next) => {
+  try {
+    const categories = await equipmentCollection().distinct("category", {
+      $or: [{ status: "approved" }, { approvalStatus: "approved" }],
+    });
+    const labels = categories
+      .filter((category) => typeof category === "string" && category.trim())
+      .map(categoryLabel);
+    const data = [...new Set([...CATEGORY_DEFINITIONS.map((definition) => definition.label), ...labels])]
+      .sort((a, b) => a.localeCompare(b));
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
