@@ -31,7 +31,7 @@ async function equipmentDetails(equipmentIds) {
   const equipment = await getDatabase()
     .collection("equipment")
     .find({ _id: { $in: ids } })
-    .project({ name: 1, imageUrl: 1, category: 1, location: 1, ownerId: 1, ownerName: 1 })
+    .project({ name: 1, imageUrl: 1, category: 1, location: 1, ownerId: 1, ownerName: 1, ownerEmail: 1 })
     .toArray();
 
   return new Map(equipment.map((item) => [item._id.toString(), item]));
@@ -44,6 +44,11 @@ bookingsRouter.get("/", async (req, res, next) => {
     const equipmentId = textValue(req.query.equipmentId);
     const status = textValue(req.query.status);
     const ownerId = textValue(req.query.ownerId);
+    const rawSkip = req.query.skip === undefined ? "0" : textValue(req.query.skip);
+    const skip = rawSkip === null ? Number.NaN : Number(rawSkip);
+    if (!Number.isInteger(skip) || skip < 0) {
+      return res.status(400).json({ success: false, error: { message: "skip must be a non-negative integer" } });
+    }
 
     if (customerId) filter.customerId = customerId;
     if (equipmentId) filter.equipmentId = equipmentId;
@@ -68,6 +73,7 @@ bookingsRouter.get("/", async (req, res, next) => {
     const bookings = await bookingsCollection()
       .find(filter)
       .sort({ createdAt: -1 })
+      .skip(skip)
       .limit(limit)
       .toArray();
 
@@ -87,6 +93,7 @@ bookingsRouter.get("/", async (req, res, next) => {
                 location: item.location ?? "",
                 ownerId: item.ownerId ?? "",
                 ownerName: item.ownerName ?? "",
+                ownerEmail: item.ownerEmail ?? "",
               }
             : null,
         };
