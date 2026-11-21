@@ -14,4 +14,6 @@ export const env = {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
+  // Optional shared secret for write requests made by the Next.js server.
+  internalApiKey: process.env.INTERNAL_API_KEY?.trim() || "",
 };

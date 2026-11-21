@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { requireInternalKey } from "./middleware/internal-key.js";
 import { notFoundHandler } from "./middleware/not-found.js";
 import { apiRouter } from "./routes/index.js";
 
@@ -18,6 +19,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ success: true, data: { status: "ok" } });
 });
 
+app.use("/api", requireInternalKey);
 app.use("/api", apiRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
