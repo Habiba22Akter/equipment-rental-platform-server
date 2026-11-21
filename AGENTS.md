@@ -1,20 +1,66 @@
-# Backend notes
+# GearGrid Server Agent Notes
 
-- This backend uses JavaScript ES modules. Keep it beginner-friendly and do not add TypeScript or advanced repository/service layers unless requested.
-- Main entry point: `src/index.js`; Express app: `src/app.js`.
-- Keep MongoDB setup in `src/config/database.js` and environment loading in `src/config/env.js`.
-- Put route handlers under `src/routes/<resource>/` and middleware under `src/middleware/`.
-- API responses use `{ success, data }` on success and `{ success: false, error: { message } }` on errors.
-- Keep real credentials in `.env`; update `.env.example` with names and safe placeholders only.
+## Stack
 
-## Completed foundation
+- JavaScript ES modules with Express 5 and the official MongoDB driver.
+- Main entry: `src/index.js`; app setup: `src/app.js`.
+- MongoDB setup: `src/config/database.js`; environment: `src/config/env.js`.
+- Routes: `src/routes/<resource>/`; middleware: `src/middleware/`.
 
-- Added Express app with CORS, JSON parsing, health endpoint, 404 handling, and centralized error handling.
-- Added MongoDB connection and ping during startup, configured by `DB_URL` and `DB_NAME`.
-- Added starter GET routes for users, equipments, and bookings.
-- Added `npm run dev` and `npm start` scripts.
-- Verified locally: server startup, MongoDB ping, health and collection endpoints, CORS, JSON parse errors, and 404 response.
+## API conventions
 
-## Next recommended step
+- Mount resource routes below `/api`.
+- Success: `{ success: true, data: ... }`
+- Error: `{ success: false, error: { message: ... } }`
+- Return appropriate status codes: 400 validation, 401 unauthenticated, 403 forbidden, 404 missing, 409 conflict, 500 server failure.
+- Use centralized `next(error)` handling and centralized not-found/error middleware.
+- Keep real credentials in `.env` and placeholders in `.env.example`.
 
-Implement equipment create/update/delete routes with owner ownership checks, then connect the owner equipment form to those routes.
+## MongoDB collections
+
+- `equipment`: owner listings and approval state.
+- `bookings`: confirmed/active/completed rental records.
+- `payments`: Stripe transaction records.
+- `favorites`: customer favorite equipment.
+- `user`: Better Auth users and custom role data.
+
+## Equipment API
+
+- Base route: `/api/equipments`
+- `GET /api/equipments`: approved listings by default; `?all=true` includes pending/rejected listings.
+- `GET /api/equipments?ownerId=<id>&all=true`: owned listings for an owner.
+- `GET /api/equipments/:id`: one equipment record.
+- `POST /api/equipments`: create an equipment listing.
+- `PATCH /api/equipments/:id`: owner or admin edit.
+- `DELETE /api/equipments/:id`: owner or admin delete.
+- `PATCH /api/equipments/:id/status`: admin-only approval status update.
+
+The equipment `_id` is a MongoDB ObjectId and must be validated with `ObjectId.isValid()` before querying.
+
+## Ownership and authorization
+
+- Next.js sends signed-in identity headers to Express:
+  - `x-user-id`
+  - `x-user-role`
+- Owners may only edit/delete their own equipment.
+- Admins may manage equipment regardless of owner.
+- New listings start with `status: "pending"` and `approvalStatus: "pending"`.
+- Owner edits return listings to pending review.
+- Prevent deletion when confirmed or active bookings exist.
+
+## Create payload
+
+Required:
+
+- `name`, `description`, `category`, `location`, `imageUrl`, `ownerId`
+- `dailyRate`, `availableQuantity`
+
+Optional:
+
+- `rentalType`, `weeklyRate`, `monthlyRate`, `terms`, `ownerName`, `ownerEmail`
+
+## Commands
+
+- `npm run dev` - start with Node watch mode on port 5001.
+- `npm start` - start the server normally.
+- `npm test` - reserved for test configuration.
