@@ -37,6 +37,12 @@ The server defaults to port `5001` and database `equipment-rental-platform`. `CL
 - `GET /api/users/:id` — a single safe user record
 - `PATCH /api/users/:id/role` — change a role between `Customer` and `Owner` (admin only; `Admin` cannot be assigned here)
 
+### Reviews
+
+- `GET /api/reviews` — reviews with optional `?equipmentId=...`, `?ownerId=...`, `?customerId=...`
+- `POST /api/reviews` — review a completed rental; one review per booking, rating 1–5
+- `DELETE /api/reviews/:id` — remove your own review (admins may remove any)
+
 ### Utility
 
 - `GET /` — API identity
