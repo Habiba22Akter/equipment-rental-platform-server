@@ -6,6 +6,7 @@ export const equipmentsRouter = Router();
 
 const APPROVAL_STATUSES = ["pending", "approved", "rejected"];
 const RENTAL_TYPES = ["Daily", "Weekly", "Monthly"];
+const EQUIPMENT_CONDITIONS = ["New", "Like New", "Good", "Fair"];
 const CATEGORY_DEFINITIONS = [
   { label: "Construction Equipment", aliases: ["construction", "construction equipment"] },
   { label: "Photography Equipment", aliases: ["photography", "photographic equipment", "photography equipment"] },
@@ -270,7 +271,7 @@ equipmentsRouter.get("/:id", async (req, res, next) => {
 equipmentsRouter.post("/", async (req, res, next) => {
   try {
     const body = req.body ?? {};
-    const required = ["name", "description", "category", "location", "imageUrl", "ownerId"];
+    const required = ["name", "description", "category", "location", "imageUrl", "brand", "model", "condition", "terms", "ownerId"];
 
     for (const field of required) {
       if (typeof body[field] !== "string" || !body[field].trim()) {
@@ -281,13 +282,24 @@ equipmentsRouter.post("/", async (req, res, next) => {
       }
     }
 
-    const dailyRate = Number(body.dailyRate);
+    if (!CATEGORY_DEFINITIONS.some((definition) => normalizeCategory(definition.label) === normalizeCategory(body.category))) {
+      return res.status(400).json({ success: false, error: { message: "Choose a valid equipment category" } });
+    }
+
+    const rentalType = body.rentalType;
+    const rentalPrice = Number(body.rentalPrice ?? body.dailyRate);
     const availableQuantity = Number(body.availableQuantity);
-    if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+    if (!RENTAL_TYPES.includes(rentalType)) {
+      return res.status(400).json({ success: false, error: { message: "rentalType must be Daily, Weekly or Monthly" } });
+    }
+    if (!Number.isFinite(rentalPrice) || rentalPrice <= 0) {
       return res.status(400).json({
         success: false,
-        error: { message: "dailyRate must be greater than zero" },
+        error: { message: "rentalPrice must be greater than zero" },
       });
+    }
+    if (!EQUIPMENT_CONDITIONS.includes(body.condition)) {
+      return res.status(400).json({ success: false, error: { message: "Choose a valid equipment condition" } });
     }
     if (!Number.isInteger(availableQuantity) || availableQuantity < 1) {
       return res.status(400).json({
@@ -296,17 +308,22 @@ equipmentsRouter.post("/", async (req, res, next) => {
       });
     }
 
-    const rentalType = RENTAL_TYPES.includes(body.rentalType) ? body.rentalType : "Daily";
+    const dailyRate = rentalType === "Weekly" ? rentalPrice / 7 : rentalType === "Monthly" ? rentalPrice / 30 : rentalPrice;
+    const weeklyRate = rentalType === "Weekly" ? rentalPrice : dailyRate * 7;
+    const monthlyRate = rentalType === "Monthly" ? rentalPrice : dailyRate * 30;
     const now = new Date();
     const result = await equipmentCollection().insertOne({
       name: body.name.trim(),
       description: body.description.trim(),
       category: body.category.trim(),
+      brand: body.brand.trim(),
+      model: body.model.trim(),
+      condition: body.condition,
       location: body.location.trim(),
       imageUrl: body.imageUrl.trim(),
       dailyRate,
-      weeklyRate: Number(body.weeklyRate) || dailyRate * 7,
-      monthlyRate: Number(body.monthlyRate) || dailyRate * 30,
+      weeklyRate,
+      monthlyRate,
       rentalType,
       availableQuantity,
       quantity: availableQuantity,
@@ -352,9 +369,16 @@ equipmentsRouter.patch("/:id", async (req, res, next) => {
     const body = req.body ?? {};
     const updates = {};
 
-    for (const field of ["name", "description", "category", "location", "imageUrl", "terms"]) {
+    for (const field of ["name", "description", "category", "brand", "model", "location", "imageUrl", "terms"]) {
       const value = textField(body, field);
       if (value !== null) updates[field] = value;
+    }
+
+    if (typeof body.condition === "string") {
+      if (!EQUIPMENT_CONDITIONS.includes(body.condition)) {
+        return res.status(400).json({ success: false, error: { message: "Choose a valid equipment condition" } });
+      }
+      updates.condition = body.condition;
     }
 
     for (const field of ["dailyRate", "weeklyRate", "monthlyRate"]) {

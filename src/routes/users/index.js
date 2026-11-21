@@ -4,14 +4,10 @@ import { getDatabase } from "../../config/database.js";
 
 export const usersRouter = Router();
 
-const ASSIGNABLE_ROLES = ["Customer", "Owner"];
+const ASSIGNABLE_ROLES = ["Customer", "Owner", "Admin"];
 
 function usersCollection() {
   return getDatabase().collection("user");
-}
-
-function isAdmin(req) {
-  return req.get("x-user-role") === "Admin";
 }
 
 function userId(value) {
@@ -19,8 +15,20 @@ function userId(value) {
   return ObjectId.isValid(value) ? new ObjectId(value) : null;
 }
 
+async function isAdmin(req) {
+  if (req.get("x-user-role") !== "Admin") return false;
+  const _id = userId(req.get("x-user-id"));
+  if (!_id) return false;
+  const user = await usersCollection().findOne({ _id }, { projection: { role: 1 } });
+  return user?.role === "Admin";
+}
+
 usersRouter.get("/", async (req, res, next) => {
   try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ success: false, error: { message: "Only admins can view users" } });
+    }
+
     const filter = {};
     const role = typeof req.query.role === "string" ? req.query.role.trim() : "";
 
@@ -44,6 +52,10 @@ usersRouter.get("/", async (req, res, next) => {
 
 usersRouter.get("/:id", async (req, res, next) => {
   try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ success: false, error: { message: "Only admins can view users" } });
+    }
+
     const _id = userId(req.params.id);
     if (!_id) {
       return res.status(400).json({ success: false, error: { message: "Invalid user id" } });
@@ -66,7 +78,7 @@ usersRouter.get("/:id", async (req, res, next) => {
 
 usersRouter.patch("/:id/role", async (req, res, next) => {
   try {
-    if (!isAdmin(req)) {
+    if (!(await isAdmin(req))) {
       return res.status(403).json({
         success: false,
         error: { message: "Only admins can change account roles" },
@@ -78,11 +90,15 @@ usersRouter.patch("/:id/role", async (req, res, next) => {
       return res.status(400).json({ success: false, error: { message: "Invalid user id" } });
     }
 
+    if (req.get("x-user-id") === req.params.id) {
+      return res.status(400).json({ success: false, error: { message: "You cannot change your own role" } });
+    }
+
     const role = req.body?.role;
     if (!ASSIGNABLE_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        error: { message: "role must be Customer or Owner" },
+        error: { message: "role must be Customer, Owner or Admin" },
       });
     }
 
