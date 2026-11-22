@@ -14,10 +14,7 @@ function bookingsCollection() {
 }
 
 function actor(req) {
-  return {
-    id: req.get("x-user-id") ?? "",
-    role: req.get("x-user-role") ?? "",
-  };
+  return req.user ?? { id: "", role: "" };
 }
 
 function textValue(value) {

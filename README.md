@@ -10,6 +10,20 @@ Beginner-friendly Express.js and MongoDB backend for the Equipment Rental Platfo
 
 The server defaults to port `5001` and database `equipment-rental-platform`. `CLIENT_ORIGIN` accepts a comma-separated list of allowed browser origins.
 
+## JWT authentication
+
+The Express API expects the Next.js server to send a Better Auth JWT as:
+
+```http
+Authorization: Bearer <jwt>
+```
+
+Set `BETTER_AUTH_URL` to the public Next.js origin (for example `http://localhost:3000`). Express downloads the public keys from `${BETTER_AUTH_URL}/api/auth/jwks`, validates issuer/audience, expiration and signature, then sets `req.user` to the verified user ID and role. Identity is no longer trusted from `x-user-id` or `x-user-role`.
+
+The browser's `better-auth.session_token` is still a session cookie, not a JWT. Better Auth's JWT plugin returns a separate JWT from `GET /api/auth/token`; the Next.js server uses that token for Express requests.
+
+For a custom JWKS host, set `JWT_JWKS_URL` instead. `INTERNAL_API_KEY` remains optional, but JWT verification is required for mutations and protected resources.
+
 ## Endpoints
 
 ### Equipment
@@ -52,15 +66,14 @@ Responses use `{ "success": true, "data": ... }`; errors use `{ "success": false
 
 ## Request identity
 
-The API is called by the Next.js server, not directly by the browser. The Next.js proxy reads the Better Auth session and forwards:
+The API is called by the Next.js server, not directly by the browser. The Next.js proxy reads the Better Auth session and obtains a JWT, then forwards:
 
 | Header | Meaning |
 | --- | --- |
-| `x-user-id` | Signed-in user id |
-| `x-user-role` | `Customer`, `Owner` or `Admin` |
-| `x-api-key` | Shared secret, only required when `INTERNAL_API_KEY` is set |
+| `Authorization: Bearer <jwt>` | Better Auth signature, expiration, user ID and role |
+| `x-api-key` | Optional shared secret for mutation protection when `INTERNAL_API_KEY` is set |
 
-Ownership checks compare `x-user-id` with the listing's `ownerId`. Admin-only routes check `x-user-role`.
+Express validates JWT signatures through the Better Auth JWKS endpoint and stores verified identity in `req.user`. Ownership checks compare `req.user.id` with the listing's `ownerId`. Admin-only routes check `req.user.role`. Legacy `x-user-id` and `x-user-role` headers are not accepted for authorization.
 
 ## Environment variables
 
@@ -71,3 +84,5 @@ Ownership checks compare `x-user-id` with the listing's `ownerId`. Admin-only ro
 | `PORT` | HTTP port; defaults to `5001` |
 | `CLIENT_ORIGIN` | Allowed frontend origin(s), comma-separated |
 | `INTERNAL_API_KEY` | Optional shared secret required on write requests |
+| `BETTER_AUTH_URL` | Public Next.js origin used as JWT issuer/audience and for JWKS discovery |
+| `JWT_JWKS_URL` | Optional explicit JWKS URL override |

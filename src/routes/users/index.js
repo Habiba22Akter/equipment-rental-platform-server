@@ -16,8 +16,8 @@ function userId(value) {
 }
 
 async function isAdmin(req) {
-  if (req.get("x-user-role") !== "Admin") return false;
-  const _id = userId(req.get("x-user-id"));
+  if (req.user?.role !== "Admin") return false;
+  const _id = userId(req.user.id);
   if (!_id) return false;
   const user = await usersCollection().findOne({ _id }, { projection: { role: 1 } });
   return user?.role === "Admin";
@@ -90,7 +90,7 @@ usersRouter.patch("/:id/role", async (req, res, next) => {
       return res.status(400).json({ success: false, error: { message: "Invalid user id" } });
     }
 
-    if (req.get("x-user-id") === req.params.id) {
+    if (req.user.id === req.params.id) {
       return res.status(400).json({ success: false, error: { message: "You cannot change your own role" } });
     }
 

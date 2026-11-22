@@ -16,6 +16,10 @@ export const env = {
     .filter(Boolean),
   // Optional shared secret for write requests made by the Next.js server.
   internalApiKey: process.env.INTERNAL_API_KEY?.trim() || "",
+  betterAuthUrl: process.env.BETTER_AUTH_URL?.trim() || "http://localhost:3000",
+  jwtJwksUrl:
+    process.env.JWT_JWKS_URL?.trim() ||
+    `${(process.env.BETTER_AUTH_URL || "http://localhost:3000").replace(/\/$/, "")}/api/auth/jwks`,
   stripeSecretKey: process.env.STRIPE_SECRET_KEY?.trim() || "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || "",
   bdtPerUsd: Number(process.env.BDT_PER_USD) || 120,

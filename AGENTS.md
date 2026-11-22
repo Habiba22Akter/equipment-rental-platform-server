@@ -6,6 +6,8 @@
 - Main entry: `src/index.js`; app setup: `src/app.js`.
 - MongoDB setup: `src/config/database.js`; environment: `src/config/env.js`.
 - Routes: `src/routes/<resource>/`; middleware: `src/middleware/`.
+- JWT: Better Auth is the issuer. Express verifies Bearer tokens from Better Auth's JWKS endpoint.
+- Better Auth's JWT is separate from its `better-auth.session_token` cookie; Next.js obtains it from `/api/auth/token` for Express requests.
 
 ## API conventions
 
@@ -39,9 +41,9 @@ The equipment `_id` is a MongoDB ObjectId and must be validated with `ObjectId.i
 
 ## Ownership and authorization
 
-- Next.js sends signed-in identity headers to Express:
-  - `x-user-id`
-  - `x-user-role`
+- Next.js sends a Better Auth Bearer JWT to Express.
+- Express exposes verified identity as `req.user = { id, role }`.
+- Never trust spoofable identity headers for authorization.
 - Owners may only edit/delete their own equipment.
 - Admins may manage equipment regardless of owner.
 - New listings start with `status: "pending"` and `approvalStatus: "pending"`.
@@ -76,4 +78,5 @@ Optional:
 - `GET /api/equipments/:id/availability?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` returns total, reserved, and available units for those dates.
 - The Stripe webhook route is registered before `express.json()` and the internal API key middleware.
 - Configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BDT_PER_USD` in the server `.env`. `BDT_PER_USD` defaults to 120.
+- Configure `BETTER_AUTH_URL` (or `JWT_JWKS_URL`) so Express can verify Next.js-issued JWTs.
 - For local webhook delivery, keep `stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:5001/api/webhooks/stripe` running in a terminal.
