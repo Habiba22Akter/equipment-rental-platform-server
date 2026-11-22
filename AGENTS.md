@@ -8,6 +8,7 @@
 - Routes: `src/routes/<resource>/`; middleware: `src/middleware/`.
 - JWT: Better Auth is the issuer. Express verifies Bearer tokens from Better Auth's JWKS endpoint.
 - Better Auth's JWT is separate from its `better-auth.session_token` cookie; Next.js obtains it from `/api/auth/token` for Express requests.
+- User role management allows real admins to assign `Customer`, `Owner` or `Admin`; the Next.js layer separately blocks the configured Demo Admin.
 
 ## API conventions
 
@@ -80,3 +81,9 @@ Optional:
 - Configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BDT_PER_USD` in the server `.env`. `BDT_PER_USD` defaults to 120.
 - Configure `BETTER_AUTH_URL` (or `JWT_JWKS_URL`) so Express can verify Next.js-issued JWTs.
 - For local webhook delivery, keep `stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:5001/api/webhooks/stripe` running in a terminal.
+
+## Assignment and release status
+
+- The requested equipment marketplace API, JWT authorization, booking/payment and role-management endpoints are implemented.
+- Do not claim production API or webhook availability until a live deployment is configured and verified.
+- Current committed-history count is 16 server commits; check Git status because working-tree changes are not included in that count.

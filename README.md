@@ -10,6 +10,15 @@ Beginner-friendly Express.js and MongoDB backend for the Equipment Rental Platfo
 
 The server defaults to port `5001` and database `equipment-rental-platform`. `CLIENT_ORIGIN` accepts a comma-separated list of allowed browser origins.
 
+## npm packages
+
+- `express` — HTTP API and middleware.
+- `mongodb` — MongoDB connection and queries.
+- `cors` — configured frontend-origin access.
+- `dotenv` — local environment variable loading.
+- `jose` — verify Better Auth JWT signatures and claims through JWKS.
+- `stripe` — Checkout Sessions and webhook event verification.
+
 ## JWT authentication
 
 The Express API expects the Next.js server to send a Better Auth JWT as:
@@ -49,7 +58,7 @@ For a custom JWKS host, set `JWT_JWKS_URL` instead. `INTERNAL_API_KEY` remains o
 
 - `GET /api/users` — user records without password data; `?role=Customer|Owner|Admin`
 - `GET /api/users/:id` — a single safe user record
-- `PATCH /api/users/:id/role` — change a role between `Customer` and `Owner` (admin only; `Admin` cannot be assigned here)
+- `PATCH /api/users/:id/role` — change a role to `Customer`, `Owner` or `Admin` (real admin only; users cannot change their own role)
 
 ### Reviews
 
@@ -86,3 +95,7 @@ Express validates JWT signatures through the Better Auth JWKS endpoint and store
 | `INTERNAL_API_KEY` | Optional shared secret required on write requests |
 | `BETTER_AUTH_URL` | Public Next.js origin used as JWT issuer/audience and for JWKS discovery |
 | `JWT_JWKS_URL` | Optional explicit JWKS URL override |
+
+## Assignment deployment status
+
+The API implements equipment CRUD/moderation, backend equipment filters and sorting, booking/payment records, Better Auth JWT authorization, reviews, favorites and role-aware user management. The committed Git history currently contains 16 server commits, exceeding the requested 12. Production deployment is not confirmed by this repository: configure the live `CLIENT_ORIGIN`, MongoDB URL, Better Auth JWKS URL, Stripe keys and public webhook endpoint, then verify the deployed API and webhook.
