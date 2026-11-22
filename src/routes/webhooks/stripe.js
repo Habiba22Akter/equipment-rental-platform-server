@@ -4,10 +4,16 @@ import { getDatabase } from "../../config/database.js";
 import { stripe } from "../../stripe.js";
 
 export async function stripeWebhook(req, res) {
-  if (!stripe || !env.stripeWebhookSecret) {
+  if (!stripe) {
     return res.status(500).json({
       success: false,
-      error: { message: "Stripe webhook is not configured on the server." },
+      error: { message: "STRIPE_SECRET_KEY is missing on the server." },
+    });
+  }
+  if (!env.stripeWebhookSecret) {
+    return res.status(500).json({
+      success: false,
+      error: { message: "STRIPE_WEBHOOK_SECRET is missing on the server." },
     });
   }
 

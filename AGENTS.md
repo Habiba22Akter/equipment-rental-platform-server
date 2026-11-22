@@ -73,3 +73,4 @@ Optional:
 - A completed checkout marks the booking confirmed/paid and adds one payment record; an expired checkout cancels the pending booking.
 - The Stripe webhook route is registered before `express.json()` and the internal API key middleware.
 - Configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BDT_PER_USD` in the server `.env`. `BDT_PER_USD` defaults to 120.
+- For local webhook delivery, keep `stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:5001/api/webhooks/stripe` running in a terminal.
