@@ -16,4 +16,8 @@ export const env = {
     .filter(Boolean),
   // Optional shared secret for write requests made by the Next.js server.
   internalApiKey: process.env.INTERNAL_API_KEY?.trim() || "",
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY?.trim() || "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || "",
+  bdtPerUsd: Number(process.env.BDT_PER_USD) || 120,
+  appUrl: process.env.CLIENT_URL?.trim() || "http://localhost:3000",
 };

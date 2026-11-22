@@ -19,8 +19,8 @@
 ## MongoDB collections
 
 - `equipment`: owner listings and approval state.
-- `bookings`: confirmed/active/completed rental records.
-- `payments`: Stripe transaction records.
+- `bookings`: pending/confirmed/active/completed rental records.
+- `payments`: Stripe transaction records (USD charge and original BDT total).
 - `favorites`: customer favorite equipment.
 - `user`: Better Auth users and custom role data.
 
@@ -64,3 +64,12 @@ Optional:
 - `npm run dev` - start with Node watch mode on port 5001.
 - `npm start` - start the server normally.
 - `npm test` - reserved for test configuration.
+
+## Stripe checkout flow
+
+- `POST /api/bookings` saves a pending booking, converts its BDT total to USD cents, and returns a Stripe Checkout URL.
+- `src/stripe.js` creates Checkout Sessions with `bookingId` in Stripe metadata.
+- `POST /api/webhooks/stripe` uses the raw request body to verify Stripe signatures.
+- A completed checkout marks the booking confirmed/paid and adds one payment record; an expired checkout cancels the pending booking.
+- The Stripe webhook route is registered before `express.json()` and the internal API key middleware.
+- Configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BDT_PER_USD` in the server `.env`. `BDT_PER_USD` defaults to 120.
