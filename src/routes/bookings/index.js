@@ -4,6 +4,7 @@ import { getDatabase } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import { createCheckoutSession, stripe } from "../../stripe.js";
 import { markBookingPaid } from "../../utils/mark-booking-paid.js";
+import { verifyRenter, verifyToken } from "../../middleware/jwt-auth.js";
 
 export const bookingsRouter = Router();
 
@@ -21,7 +22,7 @@ function textValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-bookingsRouter.post("/", async (req, res, next) => {
+bookingsRouter.post("/", verifyRenter, async (req, res, next) => {
   let booking;
 
   try {
@@ -123,7 +124,7 @@ bookingsRouter.post("/", async (req, res, next) => {
 });
 
 // Reopen the existing booking's Stripe Checkout when the customer returns to pay.
-bookingsRouter.post("/:id/checkout", async (req, res, next) => {
+bookingsRouter.post("/:id/checkout", verifyRenter, async (req, res, next) => {
   try {
     if (!ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, error: { message: "Invalid booking id." } });
@@ -214,7 +215,7 @@ async function equipmentDetails(equipmentIds) {
   return new Map(equipment.map((item) => [item._id.toString(), item]));
 }
 
-bookingsRouter.get("/", async (req, res, next) => {
+bookingsRouter.get("/", verifyToken, async (req, res, next) => {
   try {
     const filter = {};
     const customerId = textValue(req.query.customerId);
@@ -227,7 +228,9 @@ bookingsRouter.get("/", async (req, res, next) => {
       return res.status(400).json({ success: false, error: { message: "skip must be a non-negative integer" } });
     }
 
-    if (customerId) filter.customerId = customerId;
+    const user = actor(req);
+    if (user.role === "Customer") filter.customerId = user.id;
+    else if (customerId) filter.customerId = customerId;
     if (equipmentId) filter.equipmentId = equipmentId;
     if (status) {
       if (!BOOKING_STATUSES.includes(status)) {
@@ -236,14 +239,18 @@ bookingsRouter.get("/", async (req, res, next) => {
       filter.status = status;
     }
 
-    if (ownerId) {
+    if (user.role === "Owner" || (user.role === "Admin" && ownerId)) {
+      const effectiveOwnerId = user.role === "Owner" ? user.id : ownerId;
       const ownedEquipment = await getDatabase()
         .collection("equipment")
-        .find({ ownerId })
+        .find({ ownerId: effectiveOwnerId })
         .project({ _id: 1 })
         .toArray();
 
-      filter.equipmentId = { $in: ownedEquipment.map((item) => item._id.toString()) };
+      const allowedIds = ownedEquipment.map((item) => item._id.toString());
+      filter.equipmentId = equipmentId && allowedIds.includes(equipmentId)
+        ? equipmentId
+        : { $in: allowedIds };
     }
 
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200);
@@ -281,7 +288,7 @@ bookingsRouter.get("/", async (req, res, next) => {
   }
 });
 
-bookingsRouter.get("/:id", async (req, res, next) => {
+bookingsRouter.get("/:id", verifyToken, async (req, res, next) => {
   try {
     if (!ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, error: { message: "Invalid booking id" } });
@@ -316,7 +323,7 @@ bookingsRouter.get("/:id", async (req, res, next) => {
   }
 });
 
-bookingsRouter.patch("/:id/status", async (req, res, next) => {
+bookingsRouter.patch("/:id/status", verifyToken, async (req, res, next) => {
   try {
     if (!ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, error: { message: "Invalid booking id" } });

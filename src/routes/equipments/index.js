@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getDatabase } from "../../config/database.js";
+import { verifyAdmin, verifyOwner, verifyToken } from "../../middleware/jwt-auth.js";
 
 export const equipmentsRouter = Router();
 
@@ -36,6 +37,20 @@ function canManage(req, equipment) {
   if (isAdmin(req)) return true;
   const { id } = actor(req);
   return Boolean(id) && equipment.ownerId === id;
+}
+
+function protectPrivateListings(req, res, next) {
+  const asksForPrivateListings = req.query.all === "true" || Boolean(req.query.ownerId) || Boolean(req.query.status);
+  if (!asksForPrivateListings) return next();
+
+  return verifyToken(req, res, () => {
+    const isAdminRequest = req.user.role === "Admin";
+    const isOwnListingRequest = req.user.role === "Owner" && req.query.ownerId === req.user.id;
+    if (!isAdminRequest && !isOwnListingRequest) {
+      return res.status(403).json({ success: false, error: { message: "You cannot view these equipment listings." } });
+    }
+    return next();
+  });
 }
 
 function queryText(value) {
@@ -170,7 +185,7 @@ function equipmentFilter(query, priceBounds) {
   return filter;
 }
 
-equipmentsRouter.get("/", async (req, res, next) => {
+equipmentsRouter.get("/", protectPrivateListings, async (req, res, next) => {
   try {
     const minPrice = optionalPrice(req.query, "minPrice");
     const maxPrice = optionalPrice(req.query, "maxPrice");
@@ -327,16 +342,25 @@ equipmentsRouter.get("/:id", async (req, res, next) => {
       return res.status(404).json({ success: false, error: { message: "Equipment not found" } });
     }
 
+    if (equipment.status !== "approved" && equipment.approvalStatus !== "approved") {
+      return verifyToken(req, res, () => {
+        if (!canManage(req, equipment)) {
+          return res.status(404).json({ success: false, error: { message: "Equipment not found" } });
+        }
+        return res.json({ success: true, data: equipment });
+      });
+    }
+
     res.json({ success: true, data: equipment });
   } catch (error) {
     next(error);
   }
 });
 
-equipmentsRouter.post("/", async (req, res, next) => {
+equipmentsRouter.post("/", verifyOwner, async (req, res, next) => {
   try {
     const body = req.body ?? {};
-    const required = ["name", "description", "category", "location", "imageUrl", "brand", "model", "condition", "terms", "ownerId"];
+    const required = ["name", "description", "category", "location", "imageUrl", "brand", "model", "condition", "terms"];
 
     for (const field of required) {
       if (typeof body[field] !== "string" || !body[field].trim()) {
@@ -395,7 +419,7 @@ equipmentsRouter.post("/", async (req, res, next) => {
       terms: typeof body.terms === "string" && body.terms.trim()
         ? body.terms.trim()
         : "Return the equipment clean and on time. The renter is responsible for accidental damage during the rental period.",
-      ownerId: body.ownerId,
+      ownerId: req.user.id,
       ownerName: typeof body.ownerName === "string" ? body.ownerName : "Verified owner",
       ownerEmail: typeof body.ownerEmail === "string" ? body.ownerEmail : "",
       status: "pending",
@@ -413,7 +437,7 @@ equipmentsRouter.post("/", async (req, res, next) => {
   }
 });
 
-equipmentsRouter.patch("/:id", async (req, res, next) => {
+equipmentsRouter.patch("/:id", verifyToken, async (req, res, next) => {
   try {
     const _id = objectId(req.params.id);
     if (!_id) {
@@ -498,7 +522,7 @@ equipmentsRouter.patch("/:id", async (req, res, next) => {
   }
 });
 
-equipmentsRouter.patch("/:id/status", async (req, res, next) => {
+equipmentsRouter.patch("/:id/status", verifyAdmin, async (req, res, next) => {
   try {
     if (!isAdmin(req)) {
       return res.status(403).json({
@@ -543,7 +567,7 @@ equipmentsRouter.patch("/:id/status", async (req, res, next) => {
   }
 });
 
-equipmentsRouter.delete("/:id", async (req, res, next) => {
+equipmentsRouter.delete("/:id", verifyToken, async (req, res, next) => {
   try {
     const _id = objectId(req.params.id);
     if (!_id) {

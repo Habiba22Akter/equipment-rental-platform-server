@@ -3,7 +3,6 @@ import express from "express";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requireInternalKey } from "./middleware/internal-key.js";
-import { requireJwt } from "./middleware/jwt-auth.js";
 import { notFoundHandler } from "./middleware/not-found.js";
 import { apiRouter } from "./routes/index.js";
 import { stripeWebhook } from "./routes/webhooks/stripe.js";
@@ -24,7 +23,6 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api", requireInternalKey);
-app.use("/api", requireJwt);
 app.use("/api", apiRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

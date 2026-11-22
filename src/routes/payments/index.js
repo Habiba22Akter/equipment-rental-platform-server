@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getDatabase } from "../../config/database.js";
+import { verifyToken } from "../../middleware/jwt-auth.js";
 
 export const paymentsRouter = Router();
 
@@ -12,7 +13,7 @@ function textValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-paymentsRouter.get("/", async (req, res, next) => {
+paymentsRouter.get("/", verifyToken, async (req, res, next) => {
   try {
     const filter = {};
     const customerId = textValue(req.query.customerId);
@@ -20,18 +21,24 @@ paymentsRouter.get("/", async (req, res, next) => {
     const status = textValue(req.query.status);
     const ownerId = textValue(req.query.ownerId);
 
-    if (customerId) filter.customerId = customerId;
+    const user = req.user;
+    if (user.role === "Customer") filter.customerId = user.id;
+    else if (customerId) filter.customerId = customerId;
     if (equipmentId) filter.equipmentId = equipmentId;
     if (status) filter.status = status;
 
-    if (ownerId) {
+    if (user.role === "Owner" || (user.role === "Admin" && ownerId)) {
+      const effectiveOwnerId = user.role === "Owner" ? user.id : ownerId;
       const ownedEquipment = await getDatabase()
         .collection("equipment")
-        .find({ ownerId })
+        .find({ ownerId: effectiveOwnerId })
         .project({ _id: 1 })
         .toArray();
 
-      filter.equipmentId = { $in: ownedEquipment.map((item) => item._id.toString()) };
+      const allowedIds = ownedEquipment.map((item) => item._id.toString());
+      filter.equipmentId = equipmentId && allowedIds.includes(equipmentId)
+        ? equipmentId
+        : { $in: allowedIds };
     }
 
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
@@ -79,7 +86,7 @@ paymentsRouter.get("/", async (req, res, next) => {
   }
 });
 
-paymentsRouter.get("/:id", async (req, res, next) => {
+paymentsRouter.get("/:id", verifyToken, async (req, res, next) => {
   try {
     if (!ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, error: { message: "Invalid payment id" } });
@@ -88,6 +95,17 @@ paymentsRouter.get("/:id", async (req, res, next) => {
     const payment = await paymentsCollection().findOne({ _id: new ObjectId(req.params.id) });
     if (!payment) {
       return res.status(404).json({ success: false, error: { message: "Payment not found" } });
+    }
+
+    const user = req.user;
+    let allowed = user.role === "Admin" || (user.role === "Customer" && payment.customerId === user.id);
+    if (user.role === "Owner" && ObjectId.isValid(payment.equipmentId)) {
+      const equipment = await getDatabase().collection("equipment")
+        .findOne({ _id: new ObjectId(payment.equipmentId) }, { projection: { ownerId: 1 } });
+      allowed = equipment?.ownerId === user.id;
+    }
+    if (!allowed) {
+      return res.status(403).json({ success: false, error: { message: "You cannot view this payment." } });
     }
 
     res.json({ success: true, data: payment });

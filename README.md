@@ -56,7 +56,7 @@ Set `BETTER_AUTH_URL` to the public Next.js origin (for example `http://localhos
 
 The browser's `better-auth.session_token` is still a session cookie, not a JWT. Better Auth's JWT plugin returns a separate JWT from `GET /api/auth/token`; the Next.js server uses that token for Express requests.
 
-For a custom JWKS host, set `JWT_JWKS_URL` instead. `INTERNAL_API_KEY` remains optional, but JWT verification is required for mutations and protected resources.
+For a custom JWKS host, set `JWT_JWKS_URL` instead. Reusable Express middleware is exported as `verifyToken`, `verifyRenter`, `verifyOwner`, and `verifyAdmin`. Renter accounts use the `Customer` role here. Public approved-equipment and review reads stay public; bookings, payments, user management, private listing queries, and write actions require a verified JWT. Ownership is checked against the verified user, not query-string identity values.
 
 ## Endpoints
 
@@ -78,6 +78,11 @@ For a custom JWKS host, set `JWT_JWKS_URL` instead. `INTERNAL_API_KEY` remains o
   - Responses include the related equipment name, image and owner
 - `GET /api/bookings/:id` — a single booking
 - `PATCH /api/bookings/:id/status` — customers may cancel their own booking; owners and admins can move it through `confirmed`, `active`, `completed`, `cancelled`
+
+### Payments
+
+- `GET /api/payments` — JWT required; customers see their transactions, owners see payments for their equipment, admins can view all
+- `GET /api/payments/:id` — JWT required; only the customer, equipment owner, or admin can view a payment
 
 ### Users
 
@@ -123,4 +128,15 @@ Express validates JWT signatures through the Better Auth JWKS endpoint and store
 
 ## Assignment deployment status
 
-The API implements equipment CRUD/moderation, backend equipment filters and sorting, booking/payment records, Better Auth JWT authorization, reviews, favorites and role-aware user management. The committed Git history currently contains 16 server commits, exceeding the requested 12. Vercel entrypoint and deployment instructions are configured, but production deployment is not confirmed until the live environment variables are added and the health endpoint, database access, JWT verification and Stripe webhook are verified.
+The API implements equipment CRUD/moderation, backend filters and sorting, booking/payment records, Better Auth JWT authorization with reusable role middleware, reviews, favorites and role-aware user management. Syntax checks pass locally. Production readiness still depends on verifying the deployed database access, JWT verification and Stripe webhook delivery.
+
+## Role access rules
+
+- `verifyToken` validates the Better Auth JWT and attaches the signed user ID and role to `req.user`.
+- `verifyRenter` represents the project's `Customer` role. `verifyOwner` and `verifyAdmin` enforce their corresponding roles.
+- Public equipment browsing and review reads remain available without sign-in.
+- Owners can read/manage their own inventory and its bookings/payments. Customers can read/manage their own bookings and payments. Admins can manage users and view marketplace records.
+- Creating equipment uses the owner ID in the verified JWT; a request body cannot create a listing for another owner.
+- Booking and payment list routes apply the authenticated user's scope even if a request supplies a different customer or owner ID.
+
+The server production deployment is `https://equipment-rental-platform-server-nine.vercel.app`. Health and public equipment GET checks returned HTTP 200 after deployment. Authenticated role behavior and Stripe webhook delivery still need the manual checks described in the project deployment section.

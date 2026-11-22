@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getDatabase } from "../../config/database.js";
+import { verifyAdmin } from "../../middleware/jwt-auth.js";
 
 export const usersRouter = Router();
+usersRouter.use(verifyAdmin);
 
 const ASSIGNABLE_ROLES = ["Customer", "Owner", "Admin"];
 

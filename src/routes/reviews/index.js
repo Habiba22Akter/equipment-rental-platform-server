@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getDatabase } from "../../config/database.js";
+import { verifyRenter, verifyToken } from "../../middleware/jwt-auth.js";
 
 export const reviewsRouter = Router();
 
@@ -47,7 +48,7 @@ reviewsRouter.get("/", async (req, res, next) => {
   }
 });
 
-reviewsRouter.post("/", async (req, res, next) => {
+reviewsRouter.post("/", verifyRenter, async (req, res, next) => {
   try {
     const user = actor(req);
     if (!user.id) {
@@ -117,7 +118,7 @@ reviewsRouter.post("/", async (req, res, next) => {
   }
 });
 
-reviewsRouter.delete("/:id", async (req, res, next) => {
+reviewsRouter.delete("/:id", verifyToken, async (req, res, next) => {
   try {
     const user = actor(req);
     if (!user.id) {

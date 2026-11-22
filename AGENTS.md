@@ -55,7 +55,7 @@ The equipment `_id` is a MongoDB ObjectId and must be validated with `ObjectId.i
 
 Required:
 
-- `name`, `description`, `category`, `location`, `imageUrl`, `ownerId`
+- `name`, `description`, `category`, `location`, `imageUrl` (`ownerId` is taken from the verified Owner JWT)
 - `dailyRate`, `availableQuantity`
 
 Optional:
@@ -96,5 +96,13 @@ Optional:
 ## Assignment and release status
 
 - The requested equipment marketplace API, JWT authorization, booking/payment and role-management endpoints are implemented.
-- Do not claim production API or webhook availability until a live deployment is configured and verified.
+- Production API deployment is configured; verify JWT-protected routes and Stripe webhook delivery before claiming those flows work end-to-end.
 - Current committed-history count is 16 server commits; check Git status because working-tree changes are not included in that count.
+
+## JWT role middleware
+
+- `verifyToken` verifies the Better Auth Bearer JWT and sets `req.user` from signed claims.
+- `verifyRenter` requires the project `Customer` role; `verifyOwner` and `verifyAdmin` require their matching roles.
+- Public approved equipment browsing and review reads do not require a JWT.
+- Private equipment listing queries, bookings, payments, user records, and mutations require authentication; booking/payment lists are scoped to the verified customer or owner.
+- Equipment creation always uses the authenticated owner's ID. Keep resource ownership checks in handlers for edits, deletes, booking details, and payments.
