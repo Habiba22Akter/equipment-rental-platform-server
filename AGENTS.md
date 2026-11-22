@@ -70,7 +70,10 @@ Optional:
 - `POST /api/bookings` saves a pending booking, converts its BDT total to USD cents, and returns a Stripe Checkout URL.
 - `src/stripe.js` creates Checkout Sessions with `bookingId` in Stripe metadata.
 - `POST /api/webhooks/stripe` uses the raw request body to verify Stripe signatures.
-- A completed checkout marks the booking confirmed/paid and adds one payment record; an expired checkout cancels the pending booking.
+- A completed checkout marks the booking confirmed/paid and adds one payment record; an expired checkout leaves it pending/unpaid so the customer can retry.
+- If a customer returns to retry after Stripe already completed payment but the local webhook was missed, the server retrieves that Stripe session and records the confirmed payment without charging again.
+- Pending bookings reserve their requested quantity for the selected dates until the customer or admin cancels the booking.
+- `GET /api/equipments/:id/availability?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` returns total, reserved, and available units for those dates.
 - The Stripe webhook route is registered before `express.json()` and the internal API key middleware.
 - Configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BDT_PER_USD` in the server `.env`. `BDT_PER_USD` defaults to 120.
 - For local webhook delivery, keep `stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:5001/api/webhooks/stripe` running in a terminal.

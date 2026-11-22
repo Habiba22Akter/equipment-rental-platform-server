@@ -2,7 +2,8 @@ import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getDatabase } from "../../config/database.js";
 import { env } from "../../config/env.js";
-import { createCheckoutSession } from "../../stripe.js";
+import { createCheckoutSession, stripe } from "../../stripe.js";
+import { markBookingPaid } from "../../utils/mark-booking-paid.js";
 
 export const bookingsRouter = Router();
 
@@ -117,9 +118,85 @@ bookingsRouter.post("/", async (req, res, next) => {
     if (booking?._id) {
       await getDatabase().collection("bookings").updateOne(
         { _id: booking._id },
-        { $set: { status: "cancelled", paymentStatus: "failed", updatedAt: new Date() } },
+        { $set: { status: "pending", paymentStatus: "unpaid", updatedAt: new Date() } },
       );
     }
+    next(error);
+  }
+});
+
+// Reopen the existing booking's Stripe Checkout when the customer returns to pay.
+bookingsRouter.post("/:id/checkout", async (req, res, next) => {
+  try {
+    if (!ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, error: { message: "Invalid booking id." } });
+    }
+
+    const user = actor(req);
+    const db = getDatabase();
+    const booking = await db.collection("bookings").findOne({ _id: new ObjectId(req.params.id) });
+    if (!booking) {
+      return res.status(404).json({ success: false, error: { message: "Booking not found." } });
+    }
+    if (user.role !== "Customer" || booking.customerId !== user.id) {
+      return res.status(403).json({ success: false, error: { message: "You cannot pay for this booking." } });
+    }
+    if (booking.paymentStatus === "paid") {
+      return res.status(409).json({ success: false, error: { message: "This booking is already paid." } });
+    }
+    if (booking.status !== "pending") {
+      return res.status(409).json({ success: false, error: { message: "Only pending bookings can be paid." } });
+    }
+
+    const equipment = await db.collection("equipment").findOne({ _id: new ObjectId(booking.equipmentId) });
+    if (!equipment) {
+      return res.status(404).json({ success: false, error: { message: "Equipment was not found." } });
+    }
+
+    if (booking.stripeSessionId) {
+      const oldSession = stripe
+        ? await stripe.checkout.sessions.retrieve(booking.stripeSessionId)
+        : null;
+      if (oldSession?.status === "open") {
+        return res.json({ success: true, data: { checkoutUrl: oldSession.url } });
+      }
+      if (oldSession?.payment_status === "paid") {
+        await markBookingPaid(db, booking, oldSession);
+        return res.json({
+          success: true,
+          data: { checkoutUrl: `${env.appUrl}/payment/success?booking_id=${booking._id}` },
+        });
+      }
+    }
+
+    const overlaps = await db.collection("bookings").find({
+      _id: { $ne: booking._id },
+      equipmentId: booking.equipmentId,
+      paymentStatus: { $nin: ["cancelled", "failed"] },
+      startDate: { $lte: booking.endDate },
+      endDate: { $gte: booking.startDate },
+    }).toArray();
+    const reserved = overlaps.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+    const available = Number(equipment.availableQuantity ?? equipment.quantity ?? 1);
+    if (reserved + Number(booking.quantity) > available) {
+      return res.status(409).json({ success: false, error: { message: "Equipment is no longer available for these dates." } });
+    }
+
+    if (!stripe) {
+      return res.status(500).json({ success: false, error: { message: "Stripe is not configured on the server." } });
+    }
+    const checkout = await createCheckoutSession({
+      booking,
+      equipment,
+      amountUsdCents: Number(booking.stripeAmountUsdCents),
+    });
+    await db.collection("bookings").updateOne(
+      { _id: booking._id, paymentStatus: { $ne: "paid" } },
+      { $set: { stripeSessionId: checkout.id, updatedAt: new Date() } },
+    );
+
+    return res.json({ success: true, data: { checkoutUrl: checkout.url } });
+  } catch (error) {
     next(error);
   }
 });
@@ -217,8 +294,26 @@ bookingsRouter.get("/:id", async (req, res, next) => {
     if (!booking) {
       return res.status(404).json({ success: false, error: { message: "Booking not found" } });
     }
+    const user = actor(req);
+    const equipment = ObjectId.isValid(booking.equipmentId)
+      ? await getDatabase().collection("equipment").findOne({ _id: new ObjectId(booking.equipmentId) })
+      : null;
+    const isCustomer = user.role === "Customer" && booking.customerId === user.id;
+    const isOwner = user.role === "Owner" && equipment?.ownerId === user.id;
+    if (!isCustomer && !isOwner && user.role !== "Admin") {
+      return res.status(403).json({ success: false, error: { message: "You cannot view this booking." } });
+    }
 
-    res.json({ success: true, data: booking });
+    res.json({
+      success: true,
+      data: {
+        ...booking,
+        equipment: equipment ? {
+          name: equipment.name ?? "Equipment",
+          imageUrl: equipment.imageUrl ?? "",
+        } : null,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -241,6 +336,12 @@ bookingsRouter.patch("/:id/status", async (req, res, next) => {
     const booking = await bookingsCollection().findOne({ _id: new ObjectId(req.params.id) });
     if (!booking) {
       return res.status(404).json({ success: false, error: { message: "Booking not found" } });
+    }
+    if (status === "cancelled" && booking.paymentStatus === "paid") {
+      return res.status(409).json({
+        success: false,
+        error: { message: "Paid bookings cannot be cancelled." },
+      });
     }
 
     const user = actor(req);
@@ -271,9 +372,13 @@ bookingsRouter.patch("/:id/status", async (req, res, next) => {
       });
     }
 
+    const changes = { status, updatedAt: new Date() };
+    if (status === "cancelled" && booking.paymentStatus !== "paid") {
+      changes.paymentStatus = "cancelled";
+    }
     await bookingsCollection().updateOne(
       { _id: new ObjectId(req.params.id) },
-      { $set: { status, updatedAt: new Date() } },
+      { $set: changes },
     );
 
     res.json({ success: true, data: { _id: req.params.id, status } });

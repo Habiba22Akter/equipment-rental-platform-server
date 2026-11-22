@@ -250,6 +250,44 @@ equipmentsRouter.get("/categories", async (_req, res, next) => {
   }
 });
 
+equipmentsRouter.get("/:id/availability", async (req, res, next) => {
+  try {
+    const id = objectId(req.params.id);
+    const startDate = queryText(req.query.startDate);
+    const endDate = queryText(req.query.endDate);
+    const start = new Date(`${startDate}T00:00:00Z`);
+    const end = new Date(`${endDate}T00:00:00Z`);
+    if (!id || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      return res.status(400).json({ success: false, error: { message: "Equipment and valid rental dates are required." } });
+    }
+
+    const equipment = await equipmentCollection().findOne({ _id: id });
+    if (!equipment) {
+      return res.status(404).json({ success: false, error: { message: "Equipment not found." } });
+    }
+
+    const reservations = await getDatabase().collection("bookings").find({
+      equipmentId: id.toString(),
+      paymentStatus: { $nin: ["cancelled", "failed"] },
+      startDate: { $lte: end },
+      endDate: { $gte: start },
+    }).toArray();
+    const totalQuantity = Number(equipment.availableQuantity ?? equipment.quantity ?? 1);
+    const reservedQuantity = reservations.reduce((sum, booking) => sum + Number(booking.quantity ?? 0), 0);
+
+    return res.json({
+      success: true,
+      data: {
+        totalQuantity,
+        reservedQuantity,
+        availableQuantity: Math.max(0, totalQuantity - reservedQuantity),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 equipmentsRouter.get("/:id", async (req, res, next) => {
   try {
     const _id = objectId(req.params.id);
