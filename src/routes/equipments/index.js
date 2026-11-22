@@ -149,7 +149,7 @@ function equipmentFilter(query, priceBounds) {
   if (search) {
     const pattern = new RegExp(escapeRegex(search), "i");
     conditions.push({
-      $or: [{ name: pattern }, { location: pattern }],
+      $or: [{ name: pattern }, { location: pattern }, { category: pattern }],
     });
   }
 
@@ -163,24 +163,6 @@ function equipmentFilter(query, priceBounds) {
     if (priceBounds.min !== undefined) priceConditions.push({ $gte: [rentalPriceExpression(), priceBounds.min] });
     if (priceBounds.max !== undefined) priceConditions.push({ $lte: [rentalPriceExpression(), priceBounds.max] });
     conditions.push({ $expr: { $and: priceConditions } });
-  }
-
-  const availability = queryText(query.availability);
-  if (availability === "available") {
-    conditions.push({
-      $or: [
-        { availableQuantity: { $gt: 0 } },
-        { availableQuantity: { $exists: false }, quantity: { $gt: 0 } },
-        { availableQuantity: { $exists: false }, quantity: { $exists: false } },
-      ],
-    });
-  } else if (availability === "unavailable") {
-    conditions.push({
-      $or: [
-        { availableQuantity: { $lte: 0 } },
-        { availableQuantity: { $exists: false }, quantity: { $lte: 0 } },
-      ],
-    });
   }
 
   if (conditions.length > 0) filter.$and = conditions;
@@ -198,7 +180,55 @@ equipmentsRouter.get("/", async (req, res, next) => {
 
     const requestedSort = queryText(req.query.sort);
     const sort = ["price-asc", "price-desc"].includes(requestedSort) ? requestedSort : "newest";
-    const pipeline = [{ $match: equipmentFilter(req.query, { min: minPrice, max: maxPrice }) }];
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const endOfToday = new Date(startOfToday);
+    endOfToday.setUTCDate(endOfToday.getUTCDate() + 1);
+    const pipeline = [
+      { $match: equipmentFilter(req.query, { min: minPrice, max: maxPrice }) },
+      {
+        $addFields: {
+          _stockTotal: { $ifNull: ["$availableQuantity", { $ifNull: ["$quantity", 1] }] },
+          _equipmentIdText: { $toString: "$_id" },
+        },
+      },
+      {
+        $lookup: {
+          from: "bookings",
+          let: { equipmentId: "$_equipmentIdText" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$equipmentId", "$$equipmentId"] },
+                    { $not: [{ $in: ["$paymentStatus", ["cancelled", "failed"]] }] },
+                    { $lt: ["$startDate", endOfToday] },
+                    { $gte: ["$endDate", startOfToday] },
+                  ],
+                },
+              },
+            },
+            { $group: { _id: null, quantity: { $sum: { $ifNull: ["$quantity", 0] } } } },
+          ],
+          as: "_todayBookings",
+        },
+      },
+      {
+        $addFields: {
+          currentAvailableQuantity: {
+            $max: [0, { $subtract: ["$_stockTotal", { $ifNull: [{ $arrayElemAt: ["$_todayBookings.quantity", 0] }, 0] }] }],
+          },
+        },
+      },
+      { $project: { _stockTotal: 0, _equipmentIdText: 0, _todayBookings: 0 } },
+    ];
+    const availability = queryText(req.query.availability);
+    if (availability === "available") {
+      pipeline.push({ $match: { currentAvailableQuantity: { $gt: 0 } } });
+    } else if (availability === "unavailable") {
+      pipeline.push({ $match: { currentAvailableQuantity: { $lte: 0 } } });
+    }
     if (sort === "price-asc" || sort === "price-desc") {
       pipeline.push({ $addFields: { _rentalPriceForSort: rentalPriceExpression() } });
     }
