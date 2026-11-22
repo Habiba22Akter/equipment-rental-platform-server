@@ -106,3 +106,10 @@ Optional:
 - Public approved equipment browsing and review reads do not require a JWT.
 - Private equipment listing queries, bookings, payments, user records, and mutations require authentication; booking/payment lists are scoped to the verified customer or owner.
 - Equipment creation always uses the authenticated owner's ID. Keep resource ownership checks in handlers for edits, deletes, booking details, and payments.
+
+## Dashboard analytics
+
+- `GET /api/analytics` requires a verified Better Auth JWT and supports Admin and Owner roles only.
+- Admin metrics are calculated from MongoDB users, equipment, bookings, and paid payments collections. It includes total users/equipment/bookings, pending equipment approvals, completed rentals, paid revenue in BDT, and the last six months of booking counts.
+- Owner metrics are scoped to equipment whose `ownerId` matches the verified user. It includes listed equipment, completed rentals, paid earnings in BDT, and the last six months of earnings.
+- The Next.js `/api/analytics` handler is the authenticated server-side proxy for the dashboard.
