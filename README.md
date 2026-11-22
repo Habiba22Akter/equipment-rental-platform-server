@@ -10,6 +10,31 @@ Beginner-friendly Express.js and MongoDB backend for the Equipment Rental Platfo
 
 The server defaults to port `5001` and database `equipment-rental-platform`. `CLIENT_ORIGIN` accepts a comma-separated list of allowed browser origins.
 
+## Deploy to Vercel
+
+In Vercel, import the repository and set **Root Directory** to `equipment-rental-platform-server`. Use the default Node/Express detection and npm install command. The root `index.js` exports the Express app for Vercel; `src/index.js` remains the local `npm run dev` entry point. No build command or custom `vercel.json` is needed for this JavaScript API.
+
+Add these variables in the Vercel project's Environment Variables settings (Production, and Preview if needed):
+
+| Variable | Vercel value |
+| --- | --- |
+| `DB_URL` | MongoDB Atlas connection string; keep it secret |
+| `DB_NAME` | `equipment-rental-platform` (or the database name in Atlas) |
+| `CLIENT_ORIGIN` | Deployed client origin, e.g. `https://your-client.vercel.app`; add other exact origins comma-separated |
+| `BETTER_AUTH_URL` | The deployed Next.js client origin, e.g. `https://your-client.vercel.app` (JWKS is read from its `/api/auth/jwks`) |
+| `CLIENT_URL` | The deployed Next.js client origin; used for Stripe success/cancel redirects |
+| `INTERNAL_API_KEY` | Optional shared secret; if set, use the same value for the client server's `EQUIPMENT_API_KEY` |
+| `JWT_JWKS_URL` | Optional override; otherwise derived from `BETTER_AUTH_URL` |
+| `STRIPE_SECRET_KEY` | Stripe secret key for the intended Stripe mode |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the production Stripe webhook endpoint |
+| `BDT_PER_USD` | Exchange rate used by the booking checkout conversion (defaults to `120`) |
+
+Do not set `PORT` in Vercel; Vercel manages the function port. On the client Vercel project, set `EQUIPMENT_API_URL` to the deployed server origin and, when using an internal key, set `EQUIPMENT_API_KEY` to the same secret as the server's `INTERNAL_API_KEY`. Keep Better Auth's client URL configured for the client deployment.
+
+After deploying, check `https://<server-domain>/` and `https://<server-domain>/api/health`. Both should return a JSON success response. In Stripe Dashboard, add `https://<server-domain>/api/webhooks/stripe` and subscribe to `checkout.session.completed` and `checkout.session.expired`; put its signing secret in `STRIPE_WEBHOOK_SECRET`. The `stripe listen` command forwards local events only and is not a production webhook setup. Confirm delivery and function logs in Stripe and Vercel before treating live payments as ready.
+
+Vercel's Express runtime and entrypoint guidance: [Express on Vercel](https://vercel.com/docs/frameworks/backend/express).
+
 ## npm packages
 
 - `express` — HTTP API and middleware.
@@ -98,4 +123,4 @@ Express validates JWT signatures through the Better Auth JWKS endpoint and store
 
 ## Assignment deployment status
 
-The API implements equipment CRUD/moderation, backend equipment filters and sorting, booking/payment records, Better Auth JWT authorization, reviews, favorites and role-aware user management. The committed Git history currently contains 16 server commits, exceeding the requested 12. Production deployment is not confirmed by this repository: configure the live `CLIENT_ORIGIN`, MongoDB URL, Better Auth JWKS URL, Stripe keys and public webhook endpoint, then verify the deployed API and webhook.
+The API implements equipment CRUD/moderation, backend equipment filters and sorting, booking/payment records, Better Auth JWT authorization, reviews, favorites and role-aware user management. The committed Git history currently contains 16 server commits, exceeding the requested 12. Vercel entrypoint and deployment instructions are configured, but production deployment is not confirmed until the live environment variables are added and the health endpoint, database access, JWT verification and Stripe webhook are verified.

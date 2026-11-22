@@ -68,6 +68,17 @@ Optional:
 - `npm start` - start the server normally.
 - `npm test` - reserved for test configuration.
 
+## Vercel deployment
+
+- Set the Vercel project's Root Directory to `equipment-rental-platform-server`.
+- Vercel entry point is the root `index.js`, which default-exports the Express app from `src/app.js`. Keep `src/index.js` as the local `npm run dev`/`npm start` listener.
+- Use Vercel's default Node/Express detection and npm install. This API does not need a build command or custom `vercel.json`.
+- Configure `DB_URL`, `DB_NAME`, `CLIENT_ORIGIN`, `BETTER_AUTH_URL`, `CLIENT_URL`, Stripe keys/secrets and `BDT_PER_USD` in Vercel. Never commit or print `.env` values. Do not set `PORT` on Vercel.
+- `CLIENT_ORIGIN`, `BETTER_AUTH_URL` and `CLIENT_URL` should use the deployed Next.js client origin. `JWT_JWKS_URL` is optional and defaults to `${BETTER_AUTH_URL}/api/auth/jwks`.
+- If `INTERNAL_API_KEY` is set on the server, set the matching `EQUIPMENT_API_KEY` in the client deployment.
+- The production Stripe webhook must target `https://<server-domain>/api/webhooks/stripe` for `checkout.session.completed` and `checkout.session.expired`; local `stripe listen` is only for local development.
+- Verify `/`, `/api/health`, MongoDB access, JWT/JWKS access, CORS and Stripe webhook delivery after deployment. Do not claim production readiness before those checks pass.
+
 ## Stripe checkout flow
 
 - `POST /api/bookings` saves a pending booking, converts its BDT total to USD cents, and returns a Stripe Checkout URL.
