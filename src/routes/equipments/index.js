@@ -258,6 +258,26 @@ equipmentsRouter.get("/", protectPrivateListings, async (req, res, next) => {
       pipeline.push({ $project: { _rentalPriceForSort: 0 } });
     }
 
+    // Paginated requests include a total count. Existing callers keep receiving an array.
+    if (req.query.page !== undefined) {
+      const page = Math.max(1, Number(queryText(req.query.page)) || 1);
+      const pageSize = Math.min(Math.max(Number(queryText(req.query.pageSize)) || 9, 1), 50);
+      const countPipeline = pipeline.filter((stage) => !stage.$sort && !stage.$project?._rentalPriceForSort);
+      countPipeline.push({ $count: "total" });
+      const [items, count] = await Promise.all([
+        equipmentCollection().aggregate([
+          ...pipeline,
+          { $skip: (page - 1) * pageSize },
+          { $limit: pageSize },
+        ]).toArray(),
+        equipmentCollection().aggregate(countPipeline).toArray(),
+      ]);
+      return res.json({
+        success: true,
+        data: { items, total: count[0]?.total ?? 0, page, pageSize },
+      });
+    }
+
     const requestedLimit = queryText(req.query.limit);
     if (requestedLimit) {
       const parsedLimit = Number(requestedLimit);

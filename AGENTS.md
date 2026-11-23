@@ -72,11 +72,14 @@ Optional:
 
 - Set the Vercel project's Root Directory to `equipment-rental-platform-server`.
 - Vercel entry point is the root `index.js`, which default-exports the Express app from `src/app.js`. Keep `src/index.js` as the local `npm run dev`/`npm start` listener.
-- Use Vercel's default Node/Express detection and npm install. This API does not need a build command or custom `vercel.json`.
+- Use Vercel's default Node/Express detection and npm install. `vercel.json` schedules the authenticated booking completion endpoint once per day.
 - Configure `DB_URL`, `DB_NAME`, `CLIENT_ORIGIN`, `BETTER_AUTH_URL`, `CLIENT_URL`, Stripe keys/secrets and `BDT_PER_USD` in Vercel. Never commit or print `.env` values. Do not set `PORT` on Vercel.
 - `CLIENT_ORIGIN`, `BETTER_AUTH_URL` and `CLIENT_URL` should use the deployed Next.js client origin. `JWT_JWKS_URL` is optional and defaults to `${BETTER_AUTH_URL}/api/auth/jwks`.
 - If `INTERNAL_API_KEY` is set on the server, set the matching `EQUIPMENT_API_KEY` in the client deployment.
-- The production Stripe webhook must target `https://<server-domain>/api/webhooks/stripe` for `checkout.session.completed` and `checkout.session.expired`; local `stripe listen` is only for local development.
+- Set a long random `CRON_SECRET` in Vercel Production so the scheduled completion endpoint accepts Vercel Cron requests. Optional completion emails require `RESEND_API_KEY` and a verified `EMAIL_FROM` sender.
+- The deployed Stripe test-mode webhook targets `https://equipment-rental-platform-server-nine.vercel.app/api/webhooks/stripe` for `checkout.session.completed` and `checkout.session.expired`; its signing secret is synced to server Vercel Production. Local `stripe listen` is only for local development.
+- Production API URL: `https://equipment-rental-platform-server-nine.vercel.app`; webhook URL: `https://equipment-rental-platform-server-nine.vercel.app/api/webhooks/stripe`.
+- Keep the Vercel Production `STRIPE_WEBHOOK_SECRET` in the same mode as `STRIPE_SECRET_KEY`. A real test Checkout still needs to confirm successful delivery and matching paid booking/payment records in MongoDB. Live mode requires a separate endpoint and signing secret.
 - Verify `/`, `/api/health`, MongoDB access, JWT/JWKS access, CORS and Stripe webhook delivery after deployment. Do not claim production readiness before those checks pass.
 
 ## Stripe checkout flow
@@ -96,8 +99,7 @@ Optional:
 ## Assignment and release status
 
 - The requested equipment marketplace API, JWT authorization, booking/payment and role-management endpoints are implemented.
-- Production API deployment is configured; verify JWT-protected routes and Stripe webhook delivery before claiming those flows work end-to-end.
-- Current committed-history count is 16 server commits; check Git status because working-tree changes are not included in that count.
+- Production API is deployed; health and public equipment GET checks returned HTTP 200 after the latest deployment. Test webhook endpoint and secret are configured; verify a real test Checkout and resulting MongoDB records before claiming payment works end-to-end.
 
 ## JWT role middleware
 
@@ -113,3 +115,10 @@ Optional:
 - Admin metrics are calculated from MongoDB users, equipment, bookings, and paid payments collections. It includes total users/equipment/bookings, pending equipment approvals, completed rentals, paid revenue in BDT, and the last six months of booking counts.
 - Owner metrics are scoped to equipment whose `ownerId` matches the verified user. It includes listed equipment, completed rentals, paid earnings in BDT, and the last six months of earnings.
 - The Next.js `/api/analytics` handler is the authenticated server-side proxy for the dashboard.
+
+## Optional assignment features
+
+- Paginated public equipment requests use `?page=1&pageSize=9` and return items plus total count; booking history already accepts `limit` and `skip`.
+- The local `src/index.js` listener schedules `node-cron` hourly. Vercel serverless uses `GET /api/cron/complete-bookings` from `vercel.json` daily at 00:05 UTC instead.
+- The completion job marks paid confirmed/active bookings completed after their end date and sends a notification to the renter and owner when Resend environment variables are configured.
+- Keep `CRON_SECRET`, `RESEND_API_KEY` and production mail sender configuration in Vercel/local environment only, never in source control.

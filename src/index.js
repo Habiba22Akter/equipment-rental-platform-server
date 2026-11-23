@@ -1,8 +1,14 @@
 import { app } from "./app.js";
 import { closeDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
+import cron from "node-cron";
+import { completeExpiredBookings } from "./utils/complete-expired-bookings.js";
 
 async function startServer() {
+  cron.schedule("5 * * * *", () => {
+    completeExpiredBookings().catch((error) => console.error("Booking completion job failed:", error));
+  });
+
   const server = app.listen(env.port, () => {
     console.log(`Server is running on port ${env.port}`);
   });

@@ -24,4 +24,7 @@ export const env = {
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || "",
   bdtPerUsd: Number(process.env.BDT_PER_USD) || 120,
   appUrl: process.env.CLIENT_URL?.trim() || "http://localhost:3000",
+  cronSecret: process.env.CRON_SECRET?.trim() || "",
+  resendApiKey: process.env.RESEND_API_KEY?.trim() || "",
+  emailFrom: process.env.EMAIL_FROM?.trim() || "",
 };

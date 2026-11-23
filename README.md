@@ -28,10 +28,15 @@ Add these variables in the Vercel project's Environment Variables settings (Prod
 | `STRIPE_SECRET_KEY` | Stripe secret key for the intended Stripe mode |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the production Stripe webhook endpoint |
 | `BDT_PER_USD` | Exchange rate used by the booking checkout conversion (defaults to `120`) |
+| `CRON_SECRET` | Long random secret used to authorize the Vercel booking-completion cron |
+| `RESEND_API_KEY` | Optional Resend API key for completion emails |
+| `EMAIL_FROM` | Verified Resend sender, for example `GearGrid <rentals@your-domain.com>` |
 
 Do not set `PORT` in Vercel; Vercel manages the function port. On the client Vercel project, set `EQUIPMENT_API_URL` to the deployed server origin and, when using an internal key, set `EQUIPMENT_API_KEY` to the same secret as the server's `INTERNAL_API_KEY`. Keep Better Auth's client URL configured for the client deployment.
 
-After deploying, check `https://<server-domain>/` and `https://<server-domain>/api/health`. Both should return a JSON success response. In Stripe Dashboard, add `https://<server-domain>/api/webhooks/stripe` and subscribe to `checkout.session.completed` and `checkout.session.expired`; put its signing secret in `STRIPE_WEBHOOK_SECRET`. The `stripe listen` command forwards local events only and is not a production webhook setup. Confirm delivery and function logs in Stripe and Vercel before treating live payments as ready.
+The production API is `https://equipment-rental-platform-server-nine.vercel.app`. `/api/health` and `/api/equipments` returned HTTP 200 after the latest deployment. A Stripe test-mode webhook destination is configured at `https://equipment-rental-platform-server-nine.vercel.app/api/webhooks/stripe` for `checkout.session.completed` and `checkout.session.expired`; its signing secret is stored in the server Vercel Production variable `STRIPE_WEBHOOK_SECRET`, and the server has been redeployed. Keep `STRIPE_SECRET_KEY` in the same test mode. Complete a real test Checkout and confirm a successful Stripe delivery and matching MongoDB booking/payment records. For live payments, create a separate live-mode endpoint and replace the Vercel secret with its signing secret. `stripe listen` forwards local events only; it does not configure the production endpoint.
+
+The Vercel cron in `vercel.json` calls `/api/cron/complete-bookings` daily at 00:05 UTC. Add a long random `CRON_SECRET` in Vercel Production Environment Variables. Local `npm run dev` also runs `node-cron` hourly. Paid bookings whose rental end date has passed are marked `completed`. To send automatic completion emails, configure `RESEND_API_KEY` and a verified `EMAIL_FROM` sender in Resend and Vercel; without them the booking still completes and the server logs that email was skipped.
 
 Vercel's Express runtime and entrypoint guidance: [Express on Vercel](https://vercel.com/docs/frameworks/backend/express).
 
@@ -43,6 +48,7 @@ Vercel's Express runtime and entrypoint guidance: [Express on Vercel](https://ve
 - `dotenv` — local environment variable loading.
 - `jose` — verify Better Auth JWT signatures and claims through JWKS.
 - `stripe` — Checkout Sessions and webhook event verification.
+- `node-cron` — local hourly booking completion schedule; Vercel uses the scheduled endpoint.
 
 ## JWT authentication
 
@@ -65,6 +71,7 @@ For a custom JWKS host, set `JWT_JWKS_URL` instead. Reusable Express middleware 
 - `GET /api/equipments` — approved equipment (public view)
   - `?all=true` includes pending and rejected listings (used by owner and admin dashboards)
   - `?ownerId=...`, `?status=pending|approved|rejected`, `?category=...`, `?q=...`, `?limit=...`
+  - `?page=1&pageSize=9` returns `{ items, total, page, pageSize }` for the public equipment page.
 - `GET /api/equipments/:id` — a single listing
 - `POST /api/equipments` — create a listing; it starts as `pending`
 - `PATCH /api/equipments/:id` — edit a listing (owner or admin); owner edits return to `pending`
@@ -75,6 +82,7 @@ For a custom JWKS host, set `JWT_JWKS_URL` instead. Reusable Express middleware 
 
 - `GET /api/bookings` — booking records
   - `?customerId=...`, `?ownerId=...`, `?equipmentId=...`, `?status=...`
+  - `?limit=...&skip=...` supports booking-history pages.
   - Responses include the related equipment name, image and owner
 - `GET /api/bookings/:id` — a single booking
 - `PATCH /api/bookings/:id/status` — customers may cancel their own booking; owners and admins can move it through `confirmed`, `active`, `completed`, `cancelled`
@@ -128,7 +136,7 @@ Express validates JWT signatures through the Better Auth JWKS endpoint and store
 
 ## Assignment deployment status
 
-The API implements equipment CRUD/moderation, backend filters and sorting, booking/payment records, Better Auth JWT authorization with reusable role middleware, reviews, favorites and role-aware user management. Syntax checks pass locally. Production readiness still depends on verifying the deployed database access, JWT verification and Stripe webhook delivery.
+The API implements equipment CRUD/moderation, backend filters and sorting, booking/payment records, Better Auth JWT authorization with reusable role middleware, reviews, favorites and role-aware user management. The deployed API is `https://equipment-rental-platform-server-nine.vercel.app`; health and public equipment GET checks returned HTTP 200. Production Stripe webhook delivery and authenticated role behavior still need end-to-end confirmation.
 
 ## Role access rules
 

@@ -5,6 +5,7 @@ import { env } from "../../config/env.js";
 import { createCheckoutSession, stripe } from "../../stripe.js";
 import { markBookingPaid } from "../../utils/mark-booking-paid.js";
 import { verifyRenter, verifyToken } from "../../middleware/jwt-auth.js";
+import { sendBookingCompletedEmails } from "../../utils/booking-notifications.js";
 
 export const bookingsRouter = Router();
 
@@ -384,6 +385,14 @@ bookingsRouter.patch("/:id/status", verifyToken, async (req, res, next) => {
       { _id: new ObjectId(req.params.id) },
       { $set: changes },
     );
+
+    if (status === "completed" && booking.status !== "completed") {
+      await sendBookingCompletedEmails(getDatabase(), {
+        ...booking,
+        _id: booking._id.toString(),
+        equipmentObjectId: ObjectId.isValid(booking.equipmentId) ? new ObjectId(booking.equipmentId) : null,
+      });
+    }
 
     res.json({ success: true, data: { _id: req.params.id, status } });
   } catch (error) {
